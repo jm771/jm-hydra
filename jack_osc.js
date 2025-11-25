@@ -12,6 +12,8 @@ function doVisual(oscilator) {
   .out(o0) 
 }
 
+const nChannels = 20.0;
+
 setFunction({
     name: 'jackSin',
     type: 'color',
@@ -22,27 +24,55 @@ setFunction({
 })
 
 setFunction({
+  name: 'pixelMask',
+  type: 'src',
+  inputs: [{
+      type: 'float',
+      name: 'channel',
+      default: 0,
+    }],
+  glsl:
+`return _st.x < 0.005 && floor(_st.y * 20.0) == channel ? vec4(0, 0, 1, 1) : floor(_st.y * 20.0) == channel ? vec4(0, 1, 0, 1) : vec4(0, 0, 0, 0);`
+})
+
+setFunction({
   name: 'jackCombine',
   type: 'combine',
   inputs: [{ name: 'speed', type: 'float', default: 0.01 }],
   glsl:
-`return _c0.b > 0.5 ? vec4(fract(_c0.r + speed), 0, 0, 1) : vec4(_c1.r, 0, 0, 1);`
+`return _c0.b > 0.5 ? vec4(fract(_c0.r + speed), 0, 0, 1) : _c0.g > 0.5 ? vec4(_c1.r, 0, 0, 1) : _c0;`
 })
 
-function jackOsc(buffer, frq, scroll) {
-    const freqAdj = (typeof frq === 'function') ? () => 0.01 * frq() : 0.01 * frq;
-  	const scrollAdj = (typeof scroll === 'function') ? () => -0.01 * scroll() : -0.01 * scroll;
-	const mask = gradient(0).r().thresh(0.005, 0).invert().color(0, 0, 1)
-	src(buffer).add(mask).jackCombine(src(buffer).scrollX(scrollAdj, 0), freqAdj).out(buffer)
-	const jackSinOsc = src(buffer).r().jackSin()
-	return jackSinOsc;
+class jackOsc {
+ constructor(theOsc) {
+   this.osc = theOsc
+ }
 }
 
-const jacksVer = jackOsc(o2, () =>mouse.x / 100, () => (mouse.y / 2000) + 0.02)
-const builtInVer = osc(() =>mouse.x / 10, () => (-mouse.y / 1000))
+class jackOscBuilder {
+  constructor(buffer) {
+   	this.buffer = buffer
+    this.builder = src(buffer)
+  }
+  
+  addChannel(channel, frq, scroll) {
+    const freqAdj = (typeof frq === 'function') ? () => 0.01 * frq() : 0.01 * frq;
+  	const scrollAdj = (typeof scroll === 'function') ? () => -0.01 * scroll() : -0.01 * scroll;
+	const mask = pixelMask(channel)
+	this.builder = this.builder.add(mask).jackCombine(src(this.buffer).scrollX(scrollAdj, 0), freqAdj)
+    return this;
+  }
+  
+  getOsc() {
+   this.builder.out(this.buffer);
+   return src(this.buffer).r().jackSin()
+  }
+}
 
-//jacksVer.rotate().out()
-//builtInVer.out()
-//doVisual(builtInVer)
-doVisual(jacksVer)
+const foo = new jackOscBuilder(o2)
+.addChannel(7, () =>mouse.x / 200, () => (mouse.y / 4000) + 0.02)
+.addChannel(4, () =>mouse.x / 100, () => (mouse.y / 2000) + 0.02)
+.getOsc()
 
+
+foo.out()
